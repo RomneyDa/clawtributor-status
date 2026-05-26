@@ -44,7 +44,7 @@ export interface PullRequestMetric {
   mergedAt: string | null;
   closedAt: string | null;
   comments: number;
-  reviewComments: number;
+  reviews: number;
   commits: number;
   additions: number;
   deletions: number;
@@ -66,7 +66,7 @@ export interface CommentMetric {
   repository: string;
   createdAt: string;
   bodyText: string;
-  type: "issue" | "pull_request_review";
+  type: "issue";
 }
 
 export interface GitHubMetrics {
@@ -132,7 +132,7 @@ interface PullRequestNode {
   mergedAt: string | null;
   closedAt: string | null;
   comments: { totalCount: number };
-  reviewComments: { totalCount: number };
+  reviews: { totalCount: number };
   commits: { totalCount: number };
   additions: number;
   deletions: number;
@@ -157,21 +157,9 @@ interface IssueCommentNode {
   author: { login: string } | null;
 }
 
-interface ReviewCommentNode {
-  url: string;
-  createdAt: string;
-  bodyText: string;
-  author: { login: string } | null;
-}
-
 interface IssueCommentSearchNode {
   repository: { nameWithOwner: string };
   comments: { nodes: IssueCommentNode[] };
-}
-
-interface ReviewCommentSearchNode {
-  repository: { nameWithOwner: string };
-  reviewComments: { nodes: ReviewCommentNode[] };
 }
 
 interface SearchQueryData {
@@ -179,7 +167,6 @@ interface SearchQueryData {
   pullRequests: SearchResponse<PullRequestNode>;
   issues: SearchResponse<IssueNode>;
   issueComments: SearchResponse<IssueCommentSearchNode>;
-  reviewComments: SearchResponse<ReviewCommentSearchNode>;
 }
 
 const contributionsQuery = `
@@ -258,8 +245,7 @@ const activitySearchQuery = `
   query ActivitySearch(
     $pullRequestQuery: String!,
     $issueQuery: String!,
-    $issueCommentQuery: String!,
-    $reviewCommentQuery: String!
+    $issueCommentQuery: String!
   ) {
     viewer {
       login
@@ -276,7 +262,7 @@ const activitySearchQuery = `
           comments {
             totalCount
           }
-          reviewComments {
+          reviews {
             totalCount
           }
           commits {
@@ -320,26 +306,6 @@ const activitySearchQuery = `
       nodes {
         ... on Issue {
           comments(first: 20) {
-            nodes {
-              url
-              createdAt
-              bodyText
-              author {
-                login
-              }
-            }
-          }
-        }
-      }
-      pageInfo {
-        hasNextPage
-        endCursor
-      }
-    }
-    reviewComments: search(type: ISSUE, query: $reviewCommentQuery, first: 100) {
-      nodes {
-        ... on PullRequest {
-          reviewComments(first: 20) {
             nodes {
               url
               createdAt
@@ -450,8 +416,7 @@ export async function fetchGitHubMetrics(token: string, days: number): Promise<G
   const searchData = await graphql<SearchQueryData>(token, activitySearchQuery, {
     pullRequestQuery: `is:pr author:${login} ${dateQualifier}`,
     issueQuery: `is:issue author:${login} ${dateQualifier}`,
-    issueCommentQuery: `commenter:${login} ${dateQualifier}`,
-    reviewCommentQuery: `is:pr reviewed-by:${login} ${dateQualifier}`
+    issueCommentQuery: `commenter:${login} ${dateQualifier}`
   });
 
   const collection = contributionData.viewer.contributionsCollection;
@@ -486,7 +451,7 @@ export async function fetchGitHubMetrics(token: string, days: number): Promise<G
     mergedAt: node.mergedAt,
     closedAt: node.closedAt,
     comments: node.comments.totalCount,
-    reviewComments: node.reviewComments.totalCount,
+    reviews: node.reviews.totalCount,
     commits: node.commits.totalCount,
     additions: node.additions,
     deletions: node.deletions,
@@ -523,32 +488,11 @@ export async function fetchGitHubMetrics(token: string, days: number): Promise<G
       type: "issue"
     }));
 
-  const reviewComments = searchData.reviewComments.nodes
-    .flatMap((pullRequest) => {
-      if (!pullRequest.reviewComments?.nodes || !pullRequest.repository?.nameWithOwner) {
-        return [];
-      }
-      return pullRequest.reviewComments.nodes.map((comment) => ({
-        ...comment,
-        repository: pullRequest.repository.nameWithOwner
-      }));
-    })
-    .filter((comment) => comment.author?.login === login)
-    .filter((comment) => inRange(comment.createdAt, fromDate, toDate))
-    .map<CommentMetric>((comment) => ({
-      url: comment.url,
-      repository: comment.repository,
-      createdAt: comment.createdAt,
-      bodyText: comment.bodyText,
-      type: "pull_request_review"
-    }));
-
-  const comments = uniqueComments([...issueComments, ...reviewComments]).sort((a, b) =>
+  const comments = uniqueComments(issueComments).sort((a, b) =>
     b.createdAt.localeCompare(a.createdAt)
   );
 
   const totalIssueComments = comments.filter((comment) => comment.type === "issue").length;
-  const totalReviewComments = comments.filter((comment) => comment.type === "pull_request_review").length;
   const defaultBranchCommits = collection.totalCommitContributions;
   const prBranchCommits = pullRequests.reduce((total, pr) => total + pr.commits, 0);
 
@@ -574,7 +518,7 @@ export async function fetchGitHubMetrics(token: string, days: number): Promise<G
       issuesClosed: issues.filter((issue) => issue.state === "CLOSED").length,
       reviews: collection.totalPullRequestReviewContributions,
       issueComments: totalIssueComments,
-      prReviewComments: totalReviewComments,
+      prReviewComments: 0,
       repositoriesTouched: new Set([
         ...Array.from(repositories.keys()),
         ...pullRequests.map((pr) => pr.repository),

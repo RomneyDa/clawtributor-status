@@ -370,8 +370,7 @@ export function App() {
                       <span className={`state-pill ${pr.state.toLowerCase()}`}>{pr.state.toLowerCase()}</span>
                       <strong>{pr.title}</strong>
                       <small>
-                        {pr.repository} · {formatNumber(pr.commits)} commits · {formatNumber(pr.reviewComments)} review
-                        comments
+                        {pr.repository} · {formatNumber(pr.commits)} commits · {formatNumber(pr.reviews)} reviews
                       </small>
                     </a>
                   ))}
