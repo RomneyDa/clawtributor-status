@@ -25,6 +25,8 @@ import { fetchGitHubMetrics, type GitHubMetrics } from "./services/githubMetrics
 
 type LoadState = "idle" | "loading" | "ready" | "error";
 
+const defaultGitHubClientId = "Ov23liweZPNo3mh79yx7";
+
 const ranges = [
   { label: "30d", days: 30 },
   { label: "90d", days: 90 },
@@ -44,13 +46,15 @@ function formatDate(value: string) {
 }
 
 function useGitHubClientId(): [string, (clientId: string) => void] {
-  const [clientId, setClientIdState] = useState(() => window.localStorage.getItem("github_client_id") ?? "");
+  const [clientId, setClientIdState] = useState(
+    () => window.localStorage.getItem("github_client_id") ?? defaultGitHubClientId
+  );
 
   useEffect(() => {
     const load = async () => {
       const bridged = await window.desktop?.getGitHubClientId();
       if (!clientId) {
-        setClientIdState(bridged || import.meta.env.VITE_GITHUB_CLIENT_ID || "");
+        setClientIdState(bridged || import.meta.env.VITE_GITHUB_CLIENT_ID || defaultGitHubClientId);
       }
     };
     void load();

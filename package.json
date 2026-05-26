@@ -1,6 +1,6 @@
 {
   "name": "clawtributor-status",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "A macOS and Windows desktop app for GitHub contribution metrics.",
   "private": false,
   "main": "electron/main.js",
