@@ -10,6 +10,7 @@ BUILD_DIR="$SWIFT_APP_DIR/.build/release"
 RELEASE_DIR="$ROOT_DIR/release"
 APP_BUNDLE="$RELEASE_DIR/$APP_NAME.app"
 ZIP_PATH="$RELEASE_DIR/Clawtributor Status Native-$VERSION-mac-arm64.zip"
+SIGN_IDENTITY="${DEVELOPER_ID_APPLICATION:-}"
 
 cd "$SWIFT_APP_DIR"
 swift build -c release
@@ -57,7 +58,24 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
-codesign --force --deep --sign - "$APP_BUNDLE"
+if [[ -n "$SIGN_IDENTITY" ]]; then
+  codesign --force --deep --timestamp --options runtime --sign "$SIGN_IDENTITY" "$APP_BUNDLE"
+else
+  codesign --force --deep --sign - "$APP_BUNDLE"
+fi
+
+if [[ -n "${APPLE_ID:-}" && -n "${APPLE_APP_SPECIFIC_PASSWORD:-}" && -n "${APPLE_TEAM_ID:-}" && -n "$SIGN_IDENTITY" ]]; then
+  NOTARY_ZIP="$RELEASE_DIR/Clawtributor Status Native-$VERSION-notary.zip"
+  ditto -c -k --keepParent "$APP_BUNDLE" "$NOTARY_ZIP"
+  xcrun notarytool submit "$NOTARY_ZIP" \
+    --apple-id "$APPLE_ID" \
+    --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+    --team-id "$APPLE_TEAM_ID" \
+    --wait
+  xcrun stapler staple "$APP_BUNDLE"
+  rm -f "$NOTARY_ZIP"
+fi
+
 ditto -c -k --keepParent "$APP_BUNDLE" "$ZIP_PATH"
 
 echo "$ZIP_PATH"
