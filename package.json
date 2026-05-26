@@ -1,6 +1,6 @@
 {
   "name": "clawtributor-status",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "A macOS and Windows desktop app for GitHub contribution metrics.",
   "private": false,
   "main": "electron/main.js",
@@ -9,10 +9,11 @@
     "dev": "vite --host 127.0.0.1",
     "electron:dev": "concurrently -k \"npm:dev\" \"wait-on tcp:127.0.0.1:5173 && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .\"",
     "typecheck": "tsc --noEmit",
-    "build": "pnpm build:renderer && electron-builder --publish never",
-    "build:mac": "pnpm build:renderer && electron-builder --mac --publish never",
-    "build:mac:native": "scripts/package-swift-macos.sh",
-    "build:win": "pnpm build:renderer && electron-builder --win --publish never",
+    "generate-icons": "scripts/generate-icons.sh",
+    "build": "pnpm generate-icons && pnpm build:renderer && electron-builder --publish never",
+    "build:mac": "pnpm generate-icons && pnpm build:renderer && electron-builder --mac --publish never",
+    "build:mac:native": "pnpm generate-icons && scripts/package-swift-macos.sh",
+    "build:win": "pnpm generate-icons && pnpm build:renderer && electron-builder --win --publish never",
     "build:renderer": "tsc && vite build",
     "dist": "npm run build"
   },
@@ -55,6 +56,7 @@
       "output": "release"
     },
     "mac": {
+      "icon": "assets/icon.icns",
       "target": [
         "dmg",
         "zip"
@@ -63,6 +65,7 @@
       "artifactName": "${productName}-${version}-mac-${arch}.${ext}"
     },
     "win": {
+      "icon": "assets/icon.ico",
       "target": [
         "nsis",
         "zip"

@@ -19,6 +19,7 @@ mkdir -p "$APP_BUNDLE/Contents/MacOS"
 mkdir -p "$APP_BUNDLE/Contents/Resources/SharedContract"
 
 cp "$BUILD_DIR/$PRODUCT_NAME" "$APP_BUNDLE/Contents/MacOS/$PRODUCT_NAME"
+cp "$ROOT_DIR/assets/icon.icns" "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
 cp -R "$ROOT_DIR/packages/github-contract/queries" "$APP_BUNDLE/Contents/Resources/SharedContract/queries"
 cp -R "$ROOT_DIR/packages/github-contract/schema" "$APP_BUNDLE/Contents/Resources/SharedContract/schema"
 cp -R "$ROOT_DIR/packages/github-contract/fixtures" "$APP_BUNDLE/Contents/Resources/SharedContract/fixtures"
@@ -40,6 +41,8 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
   <string>$APP_NAME</string>
   <key>CFBundleDisplayName</key>
   <string>$APP_NAME</string>
+  <key>CFBundleIconFile</key>
+  <string>AppIcon</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
