@@ -24,7 +24,6 @@ If the app is launched without those variables, it prompts for a client ID and s
 Required OAuth scopes are intentionally narrow:
 
 - `read:user`
-- `user:email`
 
 ## Development
 

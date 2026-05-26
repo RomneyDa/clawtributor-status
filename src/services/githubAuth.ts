@@ -26,7 +26,7 @@ export async function requestDeviceCode(clientId: string): Promise<DeviceCodeRes
     },
     body: JSON.stringify({
       client_id: clientId,
-      scope: "read:user user:email"
+      scope: "read:user"
     })
   });
 
