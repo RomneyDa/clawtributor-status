@@ -276,7 +276,8 @@ export function App() {
               <div>
                 <h1>{metrics.viewer.name ?? metrics.viewer.login}</h1>
                 <p>
-                  @{metrics.viewer.login} from {formatDate(metrics.from)} to {formatDate(metrics.to)}
+                  @{metrics.viewer.login} in {metrics.organization} from {formatDate(metrics.from)} to{" "}
+                  {formatDate(metrics.to)}
                 </p>
               </div>
             </header>

@@ -71,6 +71,7 @@ export interface CommentMetric {
 
 export interface GitHubMetrics {
   viewer: ViewerProfile;
+  organization: string;
   from: string;
   to: string;
   summary: MetricSummary;
@@ -240,6 +241,8 @@ const contributionsQuery = `
     }
   }
 `;
+
+const targetOrganization = "openclaw";
 
 const activitySearchQuery = `
   query ActivitySearch(
@@ -414,30 +417,32 @@ export async function fetchGitHubMetrics(token: string, days: number): Promise<G
     .toISOString()
     .slice(0, 10)}`;
   const searchData = await graphql<SearchQueryData>(token, activitySearchQuery, {
-    pullRequestQuery: `is:pr author:${login} ${dateQualifier}`,
-    issueQuery: `is:issue author:${login} ${dateQualifier}`,
-    issueCommentQuery: `commenter:${login} ${dateQualifier}`
+    pullRequestQuery: `is:pr org:${targetOrganization} author:${login} ${dateQualifier}`,
+    issueQuery: `is:issue org:${targetOrganization} author:${login} ${dateQualifier}`,
+    issueCommentQuery: `org:${targetOrganization} commenter:${login} ${dateQualifier}`
   });
 
   const collection = contributionData.viewer.contributionsCollection;
   const repositories = new Map<string, RepositoryMetric>();
+  const isTargetRepository = (contribution: RepositoryContribution) =>
+    contribution.repository.nameWithOwner.toLowerCase().startsWith(`${targetOrganization}/`);
 
-  for (const contribution of collection.commitContributionsByRepository) {
+  for (const contribution of collection.commitContributionsByRepository.filter(isTargetRepository)) {
     const metric = upsertRepository(repositories, contribution);
     metric.defaultBranchCommits += sumCommits(contribution);
   }
 
-  for (const contribution of collection.pullRequestContributionsByRepository) {
+  for (const contribution of collection.pullRequestContributionsByRepository.filter(isTargetRepository)) {
     const metric = upsertRepository(repositories, contribution);
     metric.pullRequests += contribution.contributions.totalCount;
   }
 
-  for (const contribution of collection.issueContributionsByRepository) {
+  for (const contribution of collection.issueContributionsByRepository.filter(isTargetRepository)) {
     const metric = upsertRepository(repositories, contribution);
     metric.issues += contribution.contributions.totalCount;
   }
 
-  for (const contribution of collection.pullRequestReviewContributionsByRepository) {
+  for (const contribution of collection.pullRequestReviewContributionsByRepository.filter(isTargetRepository)) {
     const metric = upsertRepository(repositories, contribution);
     metric.reviews += contribution.contributions.totalCount;
   }
@@ -493,7 +498,10 @@ export async function fetchGitHubMetrics(token: string, days: number): Promise<G
   );
 
   const totalIssueComments = comments.filter((comment) => comment.type === "issue").length;
-  const defaultBranchCommits = collection.totalCommitContributions;
+  const defaultBranchCommits = Array.from(repositories.values()).reduce(
+    (total, repository) => total + repository.defaultBranchCommits,
+    0
+  );
   const prBranchCommits = pullRequests.reduce((total, pr) => total + pr.commits, 0);
 
   return {
@@ -503,6 +511,7 @@ export async function fetchGitHubMetrics(token: string, days: number): Promise<G
       avatarUrl: contributionData.viewer.avatarUrl,
       url: contributionData.viewer.url
     },
+    organization: targetOrganization,
     from,
     to,
     summary: {

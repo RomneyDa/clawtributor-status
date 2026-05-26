@@ -1,11 +1,11 @@
 # Clawtributor Status
 
-Clawtributor Status is a macOS and Windows desktop app for reviewing GitHub contribution activity from a GitHub login.
+Clawtributor Status is a macOS and Windows desktop app for reviewing OpenClaw GitHub contribution activity from a GitHub login.
 
 ## What It Tracks
 
-- Default-branch commit contributions from GitHub's contribution collection.
-- Authored pull requests split by open, merged, and closed states.
+- Default-branch commit contributions in `openclaw/*` repositories from GitHub's contribution collection.
+- Authored OpenClaw pull requests split by open, merged, and closed states.
 - Pull request branch commit counts, changed files, additions, deletions, comments, and review comments.
 - Authored issues split by open and closed states.
 - Pull request reviews, issue comments, review comments, restricted contributions, and repositories touched.
