@@ -19,6 +19,7 @@ cp .env.example .env
 ```
 
 Set `GITHUB_CLIENT_ID` for packaged Electron and `VITE_GITHUB_CLIENT_ID` for local Vite development.
+If the app is launched without those variables, it prompts for a client ID and stores it locally.
 
 Required OAuth scopes are intentionally narrow:
 

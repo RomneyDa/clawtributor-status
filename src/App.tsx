@@ -43,18 +43,30 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
-function useGitHubClientId() {
-  const [clientId, setClientId] = useState("");
+function useGitHubClientId(): [string, (clientId: string) => void] {
+  const [clientId, setClientIdState] = useState(() => window.localStorage.getItem("github_client_id") ?? "");
 
   useEffect(() => {
     const load = async () => {
       const bridged = await window.desktop?.getGitHubClientId();
-      setClientId(bridged || import.meta.env.VITE_GITHUB_CLIENT_ID || "");
+      if (!clientId) {
+        setClientIdState(bridged || import.meta.env.VITE_GITHUB_CLIENT_ID || "");
+      }
     };
     void load();
-  }, []);
+  }, [clientId]);
 
-  return clientId;
+  const setClientId = (nextClientId: string) => {
+    const trimmed = nextClientId.trim();
+    setClientIdState(trimmed);
+    if (trimmed) {
+      window.localStorage.setItem("github_client_id", trimmed);
+    } else {
+      window.localStorage.removeItem("github_client_id");
+    }
+  };
+
+  return [clientId, setClientId];
 }
 
 function openExternal(event: React.MouseEvent<HTMLAnchorElement>, url: string) {
@@ -63,7 +75,8 @@ function openExternal(event: React.MouseEvent<HTMLAnchorElement>, url: string) {
 }
 
 export function App() {
-  const clientId = useGitHubClientId();
+  const [clientId, setClientId] = useGitHubClientId();
+  const [clientIdDraft, setClientIdDraft] = useState(clientId);
   const [token, setToken] = useState<string | null>(() => getStoredToken());
   const [metrics, setMetrics] = useState<GitHubMetrics | null>(null);
   const [days, setDays] = useState(90);
@@ -96,7 +109,19 @@ export function App() {
 
   const beginLogin = async () => {
     if (!clientId) {
-      setError("Set GITHUB_CLIENT_ID or VITE_GITHUB_CLIENT_ID before starting GitHub login.");
+      const draftedClientId = clientIdDraft.trim();
+      if (draftedClientId) {
+        setClientId(draftedClientId);
+      } else {
+        setError("Enter a GitHub OAuth client ID before starting GitHub login.");
+        setState("error");
+        return;
+      }
+    }
+
+    const effectiveClientId = clientId || clientIdDraft.trim();
+    if (!effectiveClientId) {
+      setError("Enter a GitHub OAuth client ID before starting GitHub login.");
       setState("error");
       return;
     }
@@ -104,7 +129,7 @@ export function App() {
     setState("loading");
     setError("");
     try {
-      const code = await requestDeviceCode(clientId);
+      const code = await requestDeviceCode(effectiveClientId);
       setDeviceCode(code);
       await window.desktop?.openExternal(code.verification_uri);
 
@@ -112,7 +137,7 @@ export function App() {
       const expiresAt = Date.now() + code.expires_in * 1000;
       while (Date.now() < expiresAt) {
         await new Promise((resolve) => window.setTimeout(resolve, delaySeconds * 1000));
-        const response = await pollForAccessToken(clientId, code.device_code);
+        const response = await pollForAccessToken(effectiveClientId, code.device_code);
         if (response.access_token) {
           storeToken(response.access_token);
           setToken(response.access_token);
@@ -164,6 +189,16 @@ export function App() {
             Sign in with GitHub to analyze contribution activity across commits, pull requests, issues,
             reviews, and comments.
           </p>
+          {!clientId ? (
+            <label className="client-id-field">
+              <span>OAuth client ID</span>
+              <input
+                value={clientIdDraft}
+                onChange={(event) => setClientIdDraft(event.target.value)}
+                placeholder="GitHub OAuth app client ID"
+              />
+            </label>
+          ) : null}
           <button className="primary-button" type="button" onClick={beginLogin} disabled={state === "loading"}>
             <Github size={18} />
             {state === "loading" ? "Waiting for GitHub" : "Sign in with GitHub"}

@@ -124,6 +124,28 @@ a {
   padding: 16px;
 }
 
+.client-id-field {
+  display: grid;
+  gap: 7px;
+  margin-bottom: 14px;
+}
+
+.client-id-field span {
+  color: #6c665d;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.client-id-field input {
+  background: #fff;
+  border: 1px solid #dfd8cc;
+  border-radius: 7px;
+  color: #25231f;
+  height: 42px;
+  outline: 0;
+  padding: 0 12px;
+}
+
 .device-code span,
 .device-code small {
   color: #6c665d;
