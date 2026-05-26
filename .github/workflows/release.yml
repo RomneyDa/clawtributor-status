@@ -41,11 +41,11 @@ jobs:
 
       - name: Build macOS artifacts
         if: runner.os == 'macOS'
-        run: pnpm exec electron-builder --mac --publish never
+        run: pnpm exec electron-builder --mac zip --publish never
 
       - name: Build Windows artifacts
         if: runner.os == 'Windows'
-        run: pnpm exec electron-builder --win --publish never
+        run: pnpm exec electron-builder --win zip --publish never
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
