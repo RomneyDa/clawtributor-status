@@ -1,0 +1,24 @@
+{
+  "viewer": {
+    "login": "octocat",
+    "name": "Octo Cat"
+  },
+  "organization": "openclaw",
+  "summary": {
+    "totalCommits": 7,
+    "defaultBranchCommits": 4,
+    "nonDefaultBranchCommits": 3,
+    "pullRequests": 2,
+    "pullRequestsOpen": 1,
+    "pullRequestsMerged": 1,
+    "pullRequestsClosed": 0,
+    "issuesOpened": 1,
+    "issuesOpen": 1,
+    "issuesClosed": 0,
+    "reviews": 2,
+    "issueComments": 3,
+    "prReviewComments": 0,
+    "repositoriesTouched": 2,
+    "restrictedContributions": 0
+  }
+}

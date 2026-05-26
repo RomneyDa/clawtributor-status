@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "application": "Clawtributor Status",
+  "targetOrganization": "openclaw",
+  "oauth": {
+    "clientId": "Ov23liweZPNo3mh79yx7",
+    "scopes": ["read:user"],
+    "deviceCodeUrl": "https://github.com/login/device/code",
+    "accessTokenUrl": "https://github.com/login/oauth/access_token",
+    "graphqlUrl": "https://api.github.com/graphql"
+  },
+  "metricDefinitions": {
+    "defaultBranchCommits": "Commit contributions GitHub reports on default branches, filtered to repositories whose nameWithOwner starts with openclaw/.",
+    "prBranchCommits": "Commit totals on pull requests authored by the viewer in org:openclaw for the selected date range.",
+    "pullRequestsOpen": "Authored OpenClaw pull requests whose current state is OPEN.",
+    "pullRequestsMerged": "Authored OpenClaw pull requests whose current state is MERGED.",
+    "pullRequestsClosed": "Authored OpenClaw pull requests whose current state is CLOSED without merge.",
+    "issuesOpened": "Issues authored by the viewer in org:openclaw for the selected date range.",
+    "reviews": "Pull request review contributions GitHub reports, filtered to openclaw/ repositories.",
+    "issueComments": "Issue comments authored by the viewer on OpenClaw issues returned by GitHub search."
+  },
+  "privacy": {
+    "tokenStorage": "local-only",
+    "networkDestinations": ["github.com", "api.github.com"],
+    "telemetry": false,
+    "privateRepoScope": false
+  }
+}

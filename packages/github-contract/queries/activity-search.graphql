@@ -1,0 +1,84 @@
+query ActivitySearch(
+  $pullRequestQuery: String!,
+  $issueQuery: String!,
+  $issueCommentQuery: String!
+) {
+  viewer {
+    login
+  }
+  pullRequests: search(type: ISSUE, query: $pullRequestQuery, first: 100) {
+    nodes {
+      ... on PullRequest {
+        title
+        url
+        state
+        createdAt
+        mergedAt
+        closedAt
+        comments {
+          totalCount
+        }
+        reviews {
+          totalCount
+        }
+        commits {
+          totalCount
+        }
+        additions
+        deletions
+        changedFiles
+        repository {
+          nameWithOwner
+        }
+      }
+    }
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
+  }
+  issues: search(type: ISSUE, query: $issueQuery, first: 100) {
+    nodes {
+      ... on Issue {
+        title
+        url
+        state
+        createdAt
+        closedAt
+        comments {
+          totalCount
+        }
+        repository {
+          nameWithOwner
+        }
+      }
+    }
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
+  }
+  issueComments: search(type: ISSUE, query: $issueCommentQuery, first: 100) {
+    nodes {
+      ... on Issue {
+        repository {
+          nameWithOwner
+        }
+        comments(first: 20) {
+          nodes {
+            url
+            createdAt
+            bodyText
+            author {
+              login
+            }
+          }
+        }
+      }
+    }
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
+  }
+}

@@ -45,6 +45,10 @@ jobs:
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
+      - name: Build native macOS artifact
+        if: runner.os == 'macOS'
+        run: scripts/package-swift-macos.sh
+
       - name: Build Windows artifacts
         if: runner.os == 'Windows'
         run: pnpm exec electron-builder --win --config.win.target=zip --publish never

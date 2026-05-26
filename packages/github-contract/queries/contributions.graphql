@@ -1,0 +1,69 @@
+query Contributions($from: DateTime!, $to: DateTime!) {
+  viewer {
+    login
+    name
+    avatarUrl
+    url
+    contributionsCollection(from: $from, to: $to) {
+      totalCommitContributions
+      totalPullRequestContributions
+      totalIssueContributions
+      totalPullRequestReviewContributions
+      restrictedContributionsCount
+      totalRepositoriesWithContributedCommits
+      totalRepositoriesWithContributedPullRequests
+      totalRepositoriesWithContributedIssues
+      commitContributionsByRepository(maxRepositories: 50) {
+        repository {
+          nameWithOwner
+          url
+          defaultBranchRef {
+            name
+          }
+        }
+        contributions(first: 100) {
+          totalCount
+          nodes {
+            commitCount
+          }
+        }
+      }
+      pullRequestContributionsByRepository(maxRepositories: 50) {
+        repository {
+          nameWithOwner
+          url
+          defaultBranchRef {
+            name
+          }
+        }
+        contributions(first: 100) {
+          totalCount
+        }
+      }
+      issueContributionsByRepository(maxRepositories: 50) {
+        repository {
+          nameWithOwner
+          url
+          defaultBranchRef {
+            name
+          }
+        }
+        contributions(first: 100) {
+          totalCount
+        }
+      }
+      pullRequestReviewContributionsByRepository(maxRepositories: 50) {
+        repository {
+          nameWithOwner
+          url
+          defaultBranchRef {
+            name
+          }
+        }
+        contributions(first: 100) {
+          totalCount
+        }
+      }
+    }
+  }
+}

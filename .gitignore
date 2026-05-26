@@ -1,6 +1,8 @@
 node_modules/
 dist/
 release/
+.build/
+apps/macos-swift/.build/
 *.log
 .DS_Store
 .env

@@ -1,6 +1,13 @@
 # Clawtributor Status
 
-Clawtributor Status is a macOS and Windows desktop app for reviewing OpenClaw GitHub contribution activity from a GitHub login.
+Clawtributor Status is a desktop app for reviewing OpenClaw GitHub contribution activity from a GitHub login.
+
+This repository contains two maintained desktop implementations:
+
+- `apps/macos-swift`: native macOS SwiftUI app.
+- root Electron app: shared macOS/Windows app.
+
+Both apps share the GitHub API contract in `packages/github-contract`.
 
 ## What It Tracks
 
@@ -39,6 +46,12 @@ pnpm build
 ```
 
 Use `pnpm build:mac` on macOS and `pnpm build:win` on Windows for explicit platform builds. Local macOS builds produce `.dmg` and `.zip` artifacts. Windows artifacts are produced by the Windows GitHub Actions runner.
+
+Build the native SwiftUI macOS app:
+
+```sh
+pnpm build:mac:native
+```
 
 ## Releases
 
