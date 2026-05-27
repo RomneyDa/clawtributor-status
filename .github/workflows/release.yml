@@ -39,6 +39,40 @@ jobs:
       - name: Build renderer
         run: pnpm build:renderer
 
+      - name: Import macOS signing certificate
+        if: runner.os == 'macOS'
+        env:
+          MAC_CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          MAC_CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+        run: |
+          if [[ -z "${MAC_CSC_LINK:-}" ]]; then
+            echo "MAC_CSC_LINK is not set; skipping certificate import."
+            exit 0
+          fi
+
+          CERT_PATH="$RUNNER_TEMP/developer-id.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+
+          if [[ "$MAC_CSC_LINK" == http://* || "$MAC_CSC_LINK" == https://* ]]; then
+            curl -fsSL "$MAC_CSC_LINK" -o "$CERT_PATH"
+          elif [[ "$MAC_CSC_LINK" == data:*base64,* ]]; then
+            printf '%s' "${MAC_CSC_LINK#*,}" | base64 -D > "$CERT_PATH"
+          elif [[ -f "$MAC_CSC_LINK" ]]; then
+            cp "$MAC_CSC_LINK" "$CERT_PATH"
+          else
+            printf '%s' "$MAC_CSC_LINK" | base64 -D > "$CERT_PATH"
+          fi
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -P "$MAC_CSC_KEY_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security default-keychain -s "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+
       - name: Build macOS artifacts
         if: runner.os == 'macOS'
         run: pnpm exec electron-builder --mac --config.mac.target=zip --publish never
