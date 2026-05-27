@@ -7,3 +7,6 @@ apps/macos-swift/.build/
 .DS_Store
 .env
 .env.local
+.env.signing.local
+credentials/
+secrets/
