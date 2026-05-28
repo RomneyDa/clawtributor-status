@@ -7,14 +7,16 @@ const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
 
 function createWindow() {
   const window = new BrowserWindow({
-    width: 430,
-    height: 600,
+    width: 380,
+    height: 320,
     minWidth: 360,
-    minHeight: 440,
+    minHeight: 300,
+    maxWidth: 480,
+    maxHeight: 420,
     title: "Clawtributor Status",
-    backgroundColor: "#f7f5f0",
+    backgroundColor: "#1a1a1c",
     webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
+      preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false
     }

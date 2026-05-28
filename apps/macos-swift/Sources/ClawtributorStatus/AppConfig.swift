@@ -1,4 +1,28 @@
 import Foundation
+import SwiftUI
+
+enum OpenClawBrand {
+    // #E81B25 — wordmark / brand red
+    static let red = Color(red: 232.0 / 255.0, green: 27.0 / 255.0, blue: 37.0 / 255.0)
+    // #FF4F40 — lobster body, used as the accent tint
+    static let lobster = Color(red: 255.0 / 255.0, green: 79.0 / 255.0, blue: 64.0 / 255.0)
+
+    static let lobsterImage: NSImage? = {
+        let bundle = Bundle.main
+        let candidates: [(String, String)] = [
+            ("pixel-lobster", "svg"),
+            ("pixel-lobster", "png")
+        ]
+        for (name, ext) in candidates {
+            if let url = bundle.url(forResource: name, withExtension: ext, subdirectory: "OpenClaw"),
+               let image = NSImage(contentsOf: url) {
+                image.isTemplate = false
+                return image
+            }
+        }
+        return nil
+    }()
+}
 
 enum AppConfig {
     static let appName = "Clawtributor Status"

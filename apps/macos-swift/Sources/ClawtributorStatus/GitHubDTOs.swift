@@ -54,6 +54,17 @@ struct DefaultBranchRef: Decodable {
 struct ContributionConnection: Decodable {
     let totalCount: Int
     let nodes: [CommitContributionNode]
+
+    enum CodingKeys: String, CodingKey {
+        case totalCount
+        case nodes
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        totalCount = try container.decode(Int.self, forKey: .totalCount)
+        nodes = try container.decodeIfPresent([CommitContributionNode].self, forKey: .nodes) ?? []
+    }
 }
 
 struct CommitContributionNode: Decodable {

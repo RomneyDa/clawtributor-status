@@ -2,14 +2,15 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject private var model: AppModel
+    @State private var selectedRepo: String? = nil
 
     var body: some View {
         VStack(spacing: 0) {
-            HeaderView()
+            CompactHeader()
             Divider()
             Group {
                 if let metrics = model.metrics {
-                    WidgetDashboard(metrics: metrics)
+                    WidgetGrid(metrics: metrics, selectedRepo: $selectedRepo)
                 } else if let code = model.deviceCode {
                     DeviceCodeView(code: code)
                 } else if model.token == nil {
@@ -20,6 +21,7 @@ struct ContentView: View {
             }
         }
         .background(Color(nsColor: .windowBackgroundColor))
+        .tint(OpenClawBrand.lobster)
         .task {
             if model.token != nil, model.metrics == nil, !model.isLoading {
                 model.refresh()
@@ -28,35 +30,69 @@ struct ContentView: View {
     }
 }
 
-private struct HeaderView: View {
-    @EnvironmentObject private var model: AppModel
-    private let ranges = [(30, "30d"), (90, "90d"), (365, "1y")]
+private struct LobsterMark: View {
+    var size: CGFloat = 18
 
     var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "chevron.left.forwardslash.chevron.right")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(.tint)
+        Group {
+            if let nsImage = OpenClawBrand.lobsterImage {
+                Image(nsImage: nsImage)
+                    .resizable()
+                    .interpolation(.none)
+            } else {
+                Image(systemName: "tortoise.fill")
+                    .resizable()
+                    .foregroundStyle(OpenClawBrand.lobster)
+            }
+        }
+        .frame(width: size, height: size)
+    }
+}
 
-            VStack(alignment: .leading, spacing: 1) {
+private let rangeOptions: [(Int, String)] = [
+    (1, "24h"),
+    (7, "7d"),
+    (30, "30d"),
+    (90, "90d"),
+    (365, "1y")
+]
+
+private struct CompactHeader: View {
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if let metrics = model.metrics {
+                AsyncImage(url: URL(string: metrics.viewer.avatarUrl)) { image in
+                    image.resizable()
+                } placeholder: {
+                    Image(systemName: "person.crop.circle")
+                        .foregroundStyle(.secondary)
+                }
+                .frame(width: 22, height: 22)
+                .clipShape(Circle())
+
+                Text("@\(metrics.viewer.login)")
+                    .font(.system(size: 12, weight: .semibold))
+                    .lineLimit(1)
+            } else {
+                LobsterMark(size: 18)
                 Text("Clawtributor")
-                    .font(.headline)
-                Text("openclaw")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 12, weight: .semibold))
             }
 
-            Spacer()
+            Spacer(minLength: 6)
 
             if model.token != nil {
                 Picker("Range", selection: $model.selectedDays) {
-                    ForEach(ranges, id: \.0) { range in
+                    ForEach(rangeOptions, id: \.0) { range in
                         Text(range.1).tag(range.0)
                     }
                 }
                 .labelsHidden()
                 .pickerStyle(.segmented)
-                .frame(width: 132)
+                .controlSize(.small)
+                .frame(width: 168)
                 .onChange(of: model.selectedDays) { _, days in
                     model.selectRange(days: days)
                 }
@@ -66,6 +102,7 @@ private struct HeaderView: View {
                 } label: {
                     Image(systemName: "arrow.clockwise")
                 }
+                .buttonStyle(.borderless)
                 .help("Refresh")
                 .disabled(model.isLoading)
 
@@ -74,12 +111,265 @@ private struct HeaderView: View {
                 } label: {
                     Image(systemName: "trash")
                 }
+                .buttonStyle(.borderless)
                 .help("Delete local token")
                 .disabled(model.isLoading)
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+    }
+}
+
+private struct RepoFilterBar: View {
+    @EnvironmentObject private var model: AppModel
+    let metrics: GitHubMetrics
+    @Binding var selectedRepo: String?
+
+    private var repoNames: [String] {
+        metrics.repositories.map(\.nameWithOwner).sorted()
+    }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Menu {
+                Button {
+                    selectedRepo = nil
+                } label: {
+                    if selectedRepo == nil {
+                        Label("All repos", systemImage: "checkmark")
+                    } else {
+                        Text("All repos")
+                    }
+                }
+                if !repoNames.isEmpty {
+                    Divider()
+                    ForEach(repoNames, id: \.self) { name in
+                        Button {
+                            selectedRepo = name
+                        } label: {
+                            if selectedRepo == name {
+                                Label(name, systemImage: "checkmark")
+                            } else {
+                                Text(name)
+                            }
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "folder")
+                        .font(.system(size: 10))
+                    Text(selectedRepo ?? "All repos")
+                        .font(.system(size: 11, weight: .medium))
+                        .lineLimit(1)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 8))
+                }
+                .foregroundStyle(.secondary)
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+
+            if model.isLoading {
+                ProgressView()
+                    .controlSize(.small)
+                    .scaleEffect(0.65)
+                    .frame(width: 14, height: 14)
+            }
+
+            Spacer()
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4)
+    }
+}
+
+private struct FilteredStats {
+    var commits: Int
+    var prsMerged: Int
+    var prsOpen: Int
+    var prsTotal: Int
+    var additions: Int
+    var deletions: Int
+    var filesChanged: Int
+    var issues: Int
+    var reviews: Int
+    var comments: Int
+    var repos: Int
+    var restricted: Int
+}
+
+private func computeStats(from metrics: GitHubMetrics, repo: String?) -> FilteredStats {
+    if let repo {
+        let repoEntry = metrics.repositories.first { $0.nameWithOwner == repo }
+        let prs = metrics.pullRequests.filter { $0.repository == repo }
+        let issues = metrics.issues.filter { $0.repository == repo }
+        let comments = metrics.comments.filter { $0.repository == repo }
+        return FilteredStats(
+            commits: repoEntry?.defaultBranchCommits ?? 0,
+            prsMerged: prs.filter { $0.state == "MERGED" }.count,
+            prsOpen: prs.filter { $0.state == "OPEN" }.count,
+            prsTotal: prs.count,
+            additions: prs.reduce(0) { $0 + $1.additions },
+            deletions: prs.reduce(0) { $0 + $1.deletions },
+            filesChanged: prs.reduce(0) { $0 + $1.changedFiles },
+            issues: issues.count,
+            reviews: repoEntry?.reviews ?? 0,
+            comments: comments.count,
+            repos: 1,
+            restricted: 0
+        )
+    }
+
+    let s = metrics.summary
+    let prs = metrics.pullRequests
+    return FilteredStats(
+        commits: s.totalCommits,
+        prsMerged: s.pullRequestsMerged,
+        prsOpen: s.pullRequestsOpen,
+        prsTotal: s.pullRequests,
+        additions: prs.reduce(0) { $0 + $1.additions },
+        deletions: prs.reduce(0) { $0 + $1.deletions },
+        filesChanged: prs.reduce(0) { $0 + $1.changedFiles },
+        issues: s.issuesOpened,
+        reviews: s.reviews,
+        comments: s.issueComments + s.prReviewComments,
+        repos: s.repositoriesTouched,
+        restricted: s.restrictedContributions
+    )
+}
+
+private struct WidgetGrid: View {
+    let metrics: GitHubMetrics
+    @Binding var selectedRepo: String?
+
+    private var stats: FilteredStats {
+        computeStats(from: metrics, repo: selectedRepo)
+    }
+
+    private var mergeRate: Int {
+        guard stats.prsTotal > 0 else { return 0 }
+        return Int((Double(stats.prsMerged) / Double(stats.prsTotal)) * 100.0)
+    }
+
+    private var avgPrSize: Int {
+        let prs = selectedRepo == nil
+            ? metrics.pullRequests
+            : metrics.pullRequests.filter { $0.repository == selectedRepo }
+        guard !prs.isEmpty else { return 0 }
+        let total = prs.reduce(0) { $0 + $1.additions + $1.deletions }
+        return total / prs.count
+    }
+
+    private var topRepo: String? {
+        if let selectedRepo { return selectedRepo }
+        return metrics.repositories
+            .max(by: { ($0.defaultBranchCommits + $0.pullRequests) < ($1.defaultBranchCommits + $1.pullRequests) })?
+            .nameWithOwner
+    }
+
+    var body: some View {
+        VStack(spacing: 6) {
+            RepoFilterBar(metrics: metrics, selectedRepo: $selectedRepo)
+
+            let columns = Array(repeating: GridItem(.flexible(), spacing: 5), count: 3)
+            LazyVGrid(columns: columns, spacing: 5) {
+                StatCell(value: stats.commits, label: "commits", tint: OpenClawBrand.lobster)
+                StatCell(value: stats.prsMerged, label: "merged", tint: .purple)
+                StatCell(value: stats.prsOpen, label: "open PRs", tint: .green)
+                StatCell(value: stats.additions, label: "added", prefix: "+", tint: .green)
+                StatCell(value: stats.deletions, label: "deleted", prefix: "−", tint: .red)
+                StatCell(value: stats.filesChanged, label: "files", tint: .orange)
+                StatCell(value: stats.issues, label: "issues", tint: .yellow)
+                StatCell(value: stats.reviews, label: "reviews", tint: .cyan)
+                StatCell(value: stats.comments, label: "comments", tint: .pink)
+            }
+            .padding(.horizontal, 8)
+
+            FooterLine(
+                dateRange: "\(formatDate(metrics.from))–\(formatDate(metrics.to))",
+                repos: stats.repos,
+                mergeRate: mergeRate,
+                avgPrSize: avgPrSize,
+                topRepo: topRepo,
+                restricted: stats.restricted
+            )
+            .padding(.horizontal, 8)
+
+            InlineStatusView()
+                .padding(.horizontal, 8)
+        }
+        .padding(.bottom, 8)
+    }
+}
+
+private struct StatCell: View {
+    let value: Int
+    let label: String
+    var prefix: String = ""
+    let tint: Color
+
+    private var formatted: String {
+        if value >= 10_000 {
+            return value.formatted(.number.notation(.compactName))
+        }
+        return value.formatted()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("\(prefix)\(formatted)")
+                .font(.system(size: 22, weight: .bold, design: .rounded))
+                .foregroundStyle(tint)
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+            Text(label)
+                .font(.system(size: 9))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 6))
+    }
+}
+
+private struct FooterLine: View {
+    let dateRange: String
+    let repos: Int
+    let mergeRate: Int
+    let avgPrSize: Int
+    let topRepo: String?
+    let restricted: Int
+
+    var body: some View {
+        VStack(spacing: 1) {
+            HStack(spacing: 10) {
+                Label("\(repos) repos", systemImage: "folder")
+                Label("\(mergeRate)% merged", systemImage: "checkmark.seal")
+                Label("\(avgPrSize) Δ/PR", systemImage: "arrow.up.arrow.down")
+                if restricted > 0 {
+                    Label("\(restricted)", systemImage: "lock")
+                }
+            }
+            .font(.system(size: 9))
+            .labelStyle(.titleAndIcon)
+            .foregroundStyle(.secondary)
+
+            HStack(spacing: 4) {
+                if let topRepo {
+                    Text("top: \(topRepo)")
+                    Text("·")
+                }
+                Text(dateRange)
+            }
+            .font(.system(size: 9))
+            .foregroundStyle(.tertiary)
+            .lineLimit(1)
+        }
+        .padding(.top, 1)
     }
 }
 
@@ -87,27 +377,21 @@ private struct SignInView: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
-        VStack(spacing: 14) {
-            Image(systemName: "person.crop.circle")
-                .font(.system(size: 42))
-                .foregroundStyle(.secondary)
-
-            Text("Clawtributor Status")
-                .font(.title2.bold())
+        VStack(spacing: 10) {
+            LobsterMark(size: 48)
 
             Button {
                 model.signIn()
             } label: {
                 Label(model.isLoading ? "Waiting for GitHub" : "Sign in with GitHub", systemImage: "person.crop.circle.badge.checkmark")
             }
-            .controlSize(.large)
+            .controlSize(.regular)
             .buttonStyle(.borderedProminent)
             .disabled(model.isLoading)
 
             InlineStatusView()
         }
-        .padding(24)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(16)
     }
 }
 
@@ -116,39 +400,36 @@ private struct DeviceCodeView: View {
     let code: DeviceCodeResponse
 
     var body: some View {
-        VStack(spacing: 12) {
-            Text("GitHub Code")
-                .font(.headline)
+        VStack(spacing: 8) {
+            Text("GitHub code")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
 
             Text(code.userCode)
-                .font(.system(size: 34, weight: .bold, design: .monospaced))
+                .font(.system(size: 28, weight: .bold, design: .monospaced))
                 .textSelection(.enabled)
 
             Text("Waiting for browser authorization")
-                .font(.subheadline)
+                .font(.system(size: 10))
                 .foregroundStyle(.secondary)
 
             InlineStatusView()
         }
-        .padding(24)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(16)
     }
 }
 
 private struct LoadingView: View {
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 8) {
+            LobsterMark(size: 36)
             ProgressView()
-                .controlSize(.large)
+                .controlSize(.small)
             Text("Loading OpenClaw metrics")
-                .font(.headline)
-            Text("Fetching GitHub activity")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .font(.system(size: 11, weight: .semibold))
             InlineStatusView()
         }
-        .padding(24)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(16)
     }
 }
 
@@ -156,21 +437,11 @@ private struct InlineStatusView: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
-        VStack(spacing: 10) {
-            if model.isLoading {
-                HStack(spacing: 8) {
-                    ProgressView()
-                        .controlSize(.small)
-                    Text(model.loadingMessage)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
+        VStack(spacing: 6) {
             if let message = model.errorMessage {
-                VStack(spacing: 8) {
+                VStack(spacing: 6) {
                     Label(message, systemImage: "exclamationmark.triangle")
-                        .font(.caption)
+                        .font(.system(size: 10))
                         .foregroundStyle(.red)
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
@@ -183,157 +454,11 @@ private struct InlineStatusView: View {
                         .disabled(model.isLoading)
                     }
                 }
-                .padding(10)
-                .background(.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+                .padding(6)
+                .background(.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
             }
         }
     }
-}
-
-private struct WidgetDashboard: View {
-    let metrics: GitHubMetrics
-
-    private var recentItems: [ActivityItem] {
-        let prs = metrics.pullRequests.prefix(4).map {
-            ActivityItem(title: $0.title, detail: $0.repository, url: $0.url, state: $0.state.lowercased())
-        }
-        let issues = metrics.issues.prefix(3).map {
-            ActivityItem(title: $0.title, detail: $0.repository, url: $0.url, state: $0.state.lowercased())
-        }
-        return Array(prs + issues)
-    }
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack(spacing: 10) {
-                    AsyncImage(url: URL(string: metrics.viewer.avatarUrl)) { image in
-                        image.resizable()
-                    } placeholder: {
-                        Image(systemName: "person.crop.square")
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(width: 42, height: 42)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(metrics.viewer.name ?? metrics.viewer.login)
-                            .font(.headline)
-                            .lineLimit(1)
-                        Text("@\(metrics.viewer.login) - \(formatDate(metrics.from)) to \(formatDate(metrics.to))")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-                    Spacer()
-                }
-
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                    SummaryTile("Commits", value: metrics.summary.totalCommits, image: "arrow.triangle.branch")
-                    SummaryTile("Merged PRs", value: metrics.summary.pullRequestsMerged, image: "checkmark.circle")
-                    SummaryTile("Issues", value: metrics.summary.issuesOpened, image: "exclamationmark.circle")
-                    SummaryTile("Comments", value: metrics.summary.reviews + metrics.summary.issueComments, image: "text.bubble")
-                }
-
-                HStack(spacing: 10) {
-                    MiniStat(label: "Repos", value: metrics.summary.repositoriesTouched)
-                    MiniStat(label: "Open PRs", value: metrics.summary.pullRequestsOpen)
-                    MiniStat(label: "Private", value: metrics.summary.restrictedContributions)
-                }
-
-                if !recentItems.isEmpty {
-                    Text("Recent Activity")
-                        .font(.headline)
-                        .padding(.top, 2)
-
-                    VStack(spacing: 0) {
-                        ForEach(recentItems) { item in
-                            Link(destination: URL(string: item.url)!) {
-                                HStack(spacing: 8) {
-                                    Text(item.state)
-                                        .font(.caption2.bold())
-                                        .foregroundStyle(.secondary)
-                                        .frame(width: 46, alignment: .leading)
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(item.title)
-                                            .font(.subheadline)
-                                            .lineLimit(1)
-                                        Text(item.detail)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                            .lineLimit(1)
-                                    }
-                                    Spacer()
-                                }
-                                .padding(.vertical, 8)
-                            }
-                            if item.id != recentItems.last?.id {
-                                Divider()
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 10)
-                    .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 8))
-                }
-
-                InlineStatusView()
-            }
-            .padding(16)
-        }
-    }
-}
-
-private struct SummaryTile: View {
-    let label: String
-    let value: Int
-    let image: String
-
-    init(_ label: String, value: Int, image: String) {
-        self.label = label
-        self.value = value
-        self.image = image
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Image(systemName: image)
-                .foregroundStyle(.tint)
-            Text(value.formatted())
-                .font(.system(size: 24, weight: .bold))
-            Text(label)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 8))
-    }
-}
-
-private struct MiniStat: View {
-    let label: String
-    let value: Int
-
-    var body: some View {
-        VStack(spacing: 2) {
-            Text(value.formatted())
-                .font(.headline)
-            Text(label)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 8)
-        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
-    }
-}
-
-private struct ActivityItem: Identifiable {
-    var id: String { url }
-    let title: String
-    let detail: String
-    let url: String
-    let state: String
 }
 
 private func formatDate(_ date: Date) -> String {

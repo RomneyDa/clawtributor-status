@@ -34,8 +34,15 @@ final class GitHubAuthService {
         return try JSONDecoder().decode(DeviceTokenResponse.self, from: data)
     }
 
-    func openVerificationPage(_ url: String) {
-        guard let verificationURL = URL(string: url) else { return }
+    func openVerificationPage(_ url: String, userCode: String? = nil) {
+        guard var components = URLComponents(string: url) else { return }
+        if let userCode {
+            var queryItems = components.queryItems ?? []
+            queryItems.removeAll { $0.name == "user_code" }
+            queryItems.append(URLQueryItem(name: "user_code", value: userCode))
+            components.queryItems = queryItems
+        }
+        guard let verificationURL = components.url else { return }
         NSWorkspace.shared.open(verificationURL)
     }
 

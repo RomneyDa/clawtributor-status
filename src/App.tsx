@@ -1,18 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import {
-  CheckCircle2,
-  CircleDot,
-  GitCommitHorizontal,
-  GitPullRequest,
-  Github,
-  LogOut,
-  MessageSquare,
-  RefreshCw,
-  Search,
-  ShieldAlert,
-  Timer,
-  XCircle
-} from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ChevronDown, Folder, Loader2, RefreshCw, Trash2 } from "lucide-react";
 import {
   clearStoredToken,
   getStoredToken,
@@ -21,28 +8,51 @@ import {
   storeToken,
   type DeviceCodeResponse
 } from "./services/githubAuth";
-import { fetchGitHubMetrics, type GitHubMetrics } from "./services/githubMetrics";
+import { fetchGitHubMetrics, type GitHubMetrics, type PullRequestMetric } from "./services/githubMetrics";
 
 type LoadState = "idle" | "loading" | "ready" | "error";
 
 const defaultGitHubClientId = "Ov23liweZPNo3mh79yx7";
 
 const ranges = [
+  { label: "24h", days: 1 },
+  { label: "7d", days: 7 },
   { label: "30d", days: 30 },
   { label: "90d", days: 90 },
   { label: "1y", days: 365 }
 ];
 
+const lobsterSrc = "openclaw/pixel-lobster.svg";
+
 function formatNumber(value: number) {
+  if (Math.abs(value) >= 10_000) {
+    return new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(value);
+  }
   return new Intl.NumberFormat().format(value);
 }
 
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric"
-  }).format(new Date(value));
+function formatShortDate(value: Date | string) {
+  const date = value instanceof Date ? value : new Date(value);
+  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(date);
+}
+
+function buildVerificationURL(verificationUri: string, userCode: string) {
+  try {
+    const url = new URL(verificationUri);
+    url.searchParams.set("user_code", userCode);
+    return url.toString();
+  } catch {
+    return verificationUri;
+  }
+}
+
+function openVerificationURL(verificationUri: string, userCode: string) {
+  const full = buildVerificationURL(verificationUri, userCode);
+  if (window.desktop?.openExternal) {
+    void window.desktop.openExternal(full);
+    return;
+  }
+  window.open(full, "_blank", "noopener,noreferrer");
 }
 
 function useGitHubClientId(): [string, (clientId: string) => void] {
@@ -73,9 +83,58 @@ function useGitHubClientId(): [string, (clientId: string) => void] {
   return [clientId, setClientId];
 }
 
-function openExternal(event: React.MouseEvent<HTMLAnchorElement>, url: string) {
-  event.preventDefault();
-  void window.desktop?.openExternal(url);
+interface FilteredStats {
+  commits: number;
+  prsMerged: number;
+  prsOpen: number;
+  prsTotal: number;
+  additions: number;
+  deletions: number;
+  filesChanged: number;
+  issues: number;
+  reviews: number;
+  comments: number;
+  repos: number;
+  restricted: number;
+}
+
+function computeStats(metrics: GitHubMetrics, selectedRepo: string | null): FilteredStats {
+  if (selectedRepo) {
+    const repoEntry = metrics.repositories.find((repo) => repo.nameWithOwner === selectedRepo);
+    const prs = metrics.pullRequests.filter((pr) => pr.repository === selectedRepo);
+    const issues = metrics.issues.filter((issue) => issue.repository === selectedRepo);
+    const comments = metrics.comments.filter((comment) => comment.repository === selectedRepo);
+    return {
+      commits: repoEntry?.defaultBranchCommits ?? 0,
+      prsMerged: prs.filter((pr) => pr.state === "MERGED").length,
+      prsOpen: prs.filter((pr) => pr.state === "OPEN").length,
+      prsTotal: prs.length,
+      additions: prs.reduce((sum, pr) => sum + pr.additions, 0),
+      deletions: prs.reduce((sum, pr) => sum + pr.deletions, 0),
+      filesChanged: prs.reduce((sum, pr) => sum + pr.changedFiles, 0),
+      issues: issues.length,
+      reviews: repoEntry?.reviews ?? 0,
+      comments: comments.length,
+      repos: 1,
+      restricted: 0
+    };
+  }
+  const s = metrics.summary;
+  const prs = metrics.pullRequests;
+  return {
+    commits: s.totalCommits,
+    prsMerged: s.pullRequestsMerged,
+    prsOpen: s.pullRequestsOpen,
+    prsTotal: s.pullRequests,
+    additions: prs.reduce((sum: number, pr: PullRequestMetric) => sum + pr.additions, 0),
+    deletions: prs.reduce((sum: number, pr: PullRequestMetric) => sum + pr.deletions, 0),
+    filesChanged: prs.reduce((sum: number, pr: PullRequestMetric) => sum + pr.changedFiles, 0),
+    issues: s.issuesOpened,
+    reviews: s.reviews,
+    comments: s.issueComments + s.prReviewComments,
+    repos: s.repositoriesTouched,
+    restricted: s.restrictedContributions
+  };
 }
 
 export function App() {
@@ -83,25 +142,45 @@ export function App() {
   const [clientIdDraft, setClientIdDraft] = useState(clientId);
   const [token, setToken] = useState<string | null>(() => getStoredToken());
   const [metrics, setMetrics] = useState<GitHubMetrics | null>(null);
-  const [days, setDays] = useState(90);
+  const [days, setDays] = useState(1);
+  const [selectedRepo, setSelectedRepo] = useState<string | null>(null);
   const [state, setState] = useState<LoadState>("idle");
   const [error, setError] = useState("");
   const [deviceCode, setDeviceCode] = useState<DeviceCodeResponse | null>(null);
-  const [query, setQuery] = useState("");
+  const [repoMenuOpen, setRepoMenuOpen] = useState(false);
+  const [isFetching, setIsFetching] = useState(false);
+  const metricsCache = useRef<Map<number, GitHubMetrics>>(new Map());
+  const currentDaysRef = useRef(days);
+
+  useEffect(() => {
+    currentDaysRef.current = days;
+  }, [days]);
 
   const loadMetrics = async (accessToken = token, selectedDays = days) => {
-    if (!accessToken) {
-      return;
-    }
-    setState("loading");
+    if (!accessToken) return;
     setError("");
+    const cached = metricsCache.current.get(selectedDays);
+    if (cached) {
+      setMetrics(cached);
+      setState("ready");
+    } else {
+      setState("loading");
+    }
+    setIsFetching(true);
     try {
       const data = await fetchGitHubMetrics(accessToken, selectedDays);
-      setMetrics(data);
-      setState("ready");
+      metricsCache.current.set(selectedDays, data);
+      if (currentDaysRef.current === selectedDays) {
+        setMetrics(data);
+        setState("ready");
+      }
     } catch (currentError) {
-      setError(currentError instanceof Error ? currentError.message : "Unable to load GitHub metrics.");
-      setState("error");
+      if (!cached && currentDaysRef.current === selectedDays) {
+        setError(currentError instanceof Error ? currentError.message : "Unable to load GitHub metrics.");
+        setState("error");
+      }
+    } finally {
+      setIsFetching(false);
     }
   };
 
@@ -135,7 +214,7 @@ export function App() {
     try {
       const code = await requestDeviceCode(effectiveClientId);
       setDeviceCode(code);
-      await window.desktop?.openExternal(code.verification_uri);
+      openVerificationURL(code.verification_uri, code.user_code);
 
       let delaySeconds = code.interval;
       const expiresAt = Date.now() + code.expires_in * 1000;
@@ -148,9 +227,7 @@ export function App() {
           setDeviceCode(null);
           return;
         }
-        if (response.error === "authorization_pending") {
-          continue;
-        }
+        if (response.error === "authorization_pending") continue;
         if (response.error === "slow_down") {
           delaySeconds += 5;
           continue;
@@ -164,14 +241,6 @@ export function App() {
     }
   };
 
-  const filteredRepositories = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
-    if (!metrics || !normalized) {
-      return metrics?.repositories ?? [];
-    }
-    return metrics.repositories.filter((repo) => repo.nameWithOwner.toLowerCase().includes(normalized));
-  }, [metrics, query]);
-
   const signOut = () => {
     clearStoredToken();
     setToken(null);
@@ -179,281 +248,215 @@ export function App() {
     setDeviceCode(null);
     setState("idle");
     setError("");
+    setSelectedRepo(null);
+    metricsCache.current.clear();
   };
+
+  const stats = useMemo(() => (metrics ? computeStats(metrics, selectedRepo) : null), [metrics, selectedRepo]);
+
+  const mergeRate = stats && stats.prsTotal > 0 ? Math.round((stats.prsMerged / stats.prsTotal) * 100) : 0;
+
+  const avgPrSize = useMemo(() => {
+    if (!metrics) return 0;
+    const prs = selectedRepo
+      ? metrics.pullRequests.filter((pr) => pr.repository === selectedRepo)
+      : metrics.pullRequests;
+    if (prs.length === 0) return 0;
+    return Math.round(prs.reduce((sum, pr) => sum + pr.additions + pr.deletions, 0) / prs.length);
+  }, [metrics, selectedRepo]);
+
+  const topRepo = useMemo(() => {
+    if (!metrics) return null;
+    if (selectedRepo) return selectedRepo;
+    const sorted = [...metrics.repositories].sort(
+      (a, b) => b.defaultBranchCommits + b.pullRequests - (a.defaultBranchCommits + a.pullRequests)
+    );
+    return sorted[0]?.nameWithOwner ?? null;
+  }, [metrics, selectedRepo]);
+
+  const repoNames = useMemo(() => {
+    if (!metrics) return [];
+    return [...metrics.repositories.map((repo) => repo.nameWithOwner)].sort();
+  }, [metrics]);
 
   if (!token) {
     return (
-      <main className="login-screen">
-        <section className="login-panel">
-          <div className="brand-mark">
-            <Github size={34} />
+      <main className="widget login">
+        <img className="lobster lg" src={lobsterSrc} alt="OpenClaw" />
+        <h1>Clawtributor</h1>
+        {!clientId ? (
+          <label className="client-id-field">
+            <span>OAuth client ID</span>
+            <input
+              value={clientIdDraft}
+              onChange={(event) => setClientIdDraft(event.target.value)}
+              placeholder="GitHub OAuth app client ID"
+            />
+          </label>
+        ) : null}
+        <button className="primary-button" type="button" onClick={beginLogin} disabled={state === "loading"}>
+          {state === "loading" ? "Waiting for GitHub" : "Sign in with GitHub"}
+        </button>
+        {deviceCode ? (
+          <div className="device-code">
+            <span>enter this code at</span>
+            <a
+              href={buildVerificationURL(deviceCode.verification_uri, deviceCode.user_code)}
+              onClick={(event) => {
+                event.preventDefault();
+                openVerificationURL(deviceCode.verification_uri, deviceCode.user_code);
+              }}
+            >
+              {deviceCode.verification_uri}
+            </a>
+            <strong>{deviceCode.user_code}</strong>
           </div>
-          <h1>Clawtributor Status</h1>
-          <p>
-            Sign in with GitHub to analyze contribution activity across commits, pull requests, issues,
-            reviews, and comments.
-          </p>
-          {!clientId ? (
-            <label className="client-id-field">
-              <span>OAuth client ID</span>
-              <input
-                value={clientIdDraft}
-                onChange={(event) => setClientIdDraft(event.target.value)}
-                placeholder="GitHub OAuth app client ID"
-              />
-            </label>
-          ) : null}
-          <button className="primary-button" type="button" onClick={beginLogin} disabled={state === "loading"}>
-            <Github size={18} />
-            {state === "loading" ? "Waiting for GitHub" : "Sign in with GitHub"}
-          </button>
-          {deviceCode ? (
-            <div className="device-code">
-              <span>Enter code</span>
-              <strong>{deviceCode.user_code}</strong>
-              <small>{deviceCode.verification_uri}</small>
-            </div>
-          ) : null}
-          {error ? <p className="error-text">{error}</p> : null}
-        </section>
+        ) : null}
+        {error ? <p className="error-text">{error}</p> : null}
       </main>
     );
   }
 
   return (
-    <main className="app-shell">
-      <aside className="sidebar">
-        <div className="sidebar-header">
-          <div className="brand-mark compact">
-            <Github size={24} />
-          </div>
-          <div>
-            <strong>Clawtributor</strong>
-            <span>Status</span>
-          </div>
-        </div>
-        <div className="range-control" aria-label="Metric range">
+    <main className="widget">
+      <header className="compact-header">
+        {metrics ? (
+          <>
+            <img className="avatar" src={metrics.viewer.avatarUrl} alt="" />
+            <span className="handle">@{metrics.viewer.login}</span>
+          </>
+        ) : (
+          <>
+            <img className="lobster sm" src={lobsterSrc} alt="OpenClaw" />
+            <span className="handle">Clawtributor</span>
+          </>
+        )}
+        <div className="spacer" />
+        <div className="range-control" role="group" aria-label="Range">
           {ranges.map((range) => (
             <button
               key={range.days}
-              className={range.days === days ? "selected" : ""}
               type="button"
+              className={range.days === days ? "selected" : ""}
               onClick={() => setDays(range.days)}
             >
               {range.label}
             </button>
           ))}
         </div>
-        <button className="secondary-button" type="button" onClick={() => void loadMetrics()}>
-          <RefreshCw size={16} />
-          Refresh
+        <button
+          className="icon-button"
+          type="button"
+          onClick={() => void loadMetrics()}
+          title="Refresh"
+          disabled={state === "loading"}
+        >
+          <RefreshCw size={13} />
         </button>
-        <button className="ghost-button" type="button" onClick={signOut}>
-          <LogOut size={16} />
-          Sign out
+        <button className="icon-button" type="button" onClick={signOut} title="Sign out">
+          <Trash2 size={13} />
         </button>
-      </aside>
+      </header>
 
-      <section className="content">
-        {state === "loading" && !metrics ? (
-          <div className="loading-state">
-            <Timer size={28} />
-            Loading GitHub metrics
+      {metrics && stats ? (
+        <>
+          <div className="repo-filter">
+            <button
+              type="button"
+              className="repo-button"
+              onClick={() => setRepoMenuOpen((open) => !open)}
+            >
+              <Folder size={11} />
+              <span>{selectedRepo ?? "All repos"}</span>
+              <ChevronDown size={10} />
+            </button>
+            {isFetching ? <Loader2 size={11} className="spin" aria-label="Refreshing" /> : null}
+            {repoMenuOpen ? (
+              <div className="repo-menu" onMouseLeave={() => setRepoMenuOpen(false)}>
+                <button
+                  type="button"
+                  className={selectedRepo === null ? "selected" : ""}
+                  onClick={() => {
+                    setSelectedRepo(null);
+                    setRepoMenuOpen(false);
+                  }}
+                >
+                  All repos
+                </button>
+                {repoNames.map((name) => (
+                  <button
+                    key={name}
+                    type="button"
+                    className={name === selectedRepo ? "selected" : ""}
+                    onClick={() => {
+                      setSelectedRepo(name);
+                      setRepoMenuOpen(false);
+                    }}
+                  >
+                    {name}
+                  </button>
+                ))}
+              </div>
+            ) : null}
           </div>
-        ) : null}
 
-        {error ? (
-          <div className="alert">
-            <ShieldAlert size={18} />
-            {error}
-          </div>
-        ) : null}
+          <section className="stat-grid">
+            <StatCell value={stats.commits} label="commits" tint="lobster" />
+            <StatCell value={stats.prsMerged} label="merged" tint="purple" />
+            <StatCell value={stats.prsOpen} label="open PRs" tint="green" />
+            <StatCell value={stats.additions} prefix="+" label="added" tint="green" />
+            <StatCell value={stats.deletions} prefix="−" label="deleted" tint="red" />
+            <StatCell value={stats.filesChanged} label="files" tint="orange" />
+            <StatCell value={stats.issues} label="issues" tint="yellow" />
+            <StatCell value={stats.reviews} label="reviews" tint="cyan" />
+            <StatCell value={stats.comments} label="comments" tint="pink" />
+          </section>
 
-        {metrics ? (
-          <>
-            <header className="profile-header">
-              <img src={metrics.viewer.avatarUrl} alt="" />
-              <div>
-                <h1>{metrics.viewer.name ?? metrics.viewer.login}</h1>
-                <p>
-                  @{metrics.viewer.login} in {metrics.organization} from {formatDate(metrics.from)} to{" "}
-                  {formatDate(metrics.to)}
-                </p>
-              </div>
-            </header>
+          <footer className="footer-line">
+            <div className="footer-stats">
+              <span>📁 {stats.repos} repos</span>
+              <span>✓ {mergeRate}% merged</span>
+              <span>↕ {avgPrSize} Δ/PR</span>
+              {stats.restricted > 0 ? <span>🔒 {stats.restricted}</span> : null}
+            </div>
+            <div className="footer-meta">
+              {topRepo ? <span>top: {topRepo} · </span> : null}
+              <span>
+                {formatShortDate(metrics.from)}–{formatShortDate(metrics.to)}
+              </span>
+            </div>
+          </footer>
+        </>
+      ) : state === "loading" ? (
+        <div className="loading-state">
+          <img className="lobster md" src={lobsterSrc} alt="OpenClaw" />
+          <span>Loading OpenClaw metrics</span>
+        </div>
+      ) : null}
 
-            <section className="summary-grid" aria-label="Contribution summary">
-              <MetricCard
-                icon={<GitCommitHorizontal size={20} />}
-                label="Default branch commits"
-                value={metrics.summary.defaultBranchCommits}
-                detail="GitHub contribution commits on default branches"
-              />
-              <MetricCard
-                icon={<GitPullRequest size={20} />}
-                label="PR branch commits"
-                value={metrics.summary.nonDefaultBranchCommits}
-                detail="Commits attached to authored pull requests"
-              />
-              <MetricCard
-                icon={<CircleDot size={20} />}
-                label="Open PRs"
-                value={metrics.summary.pullRequestsOpen}
-                detail={`${formatNumber(metrics.summary.pullRequests)} authored PRs total`}
-              />
-              <MetricCard
-                icon={<CheckCircle2 size={20} />}
-                label="Merged PRs"
-                value={metrics.summary.pullRequestsMerged}
-                detail={`${formatNumber(metrics.summary.pullRequestsClosed)} closed without merge`}
-              />
-              <MetricCard
-                icon={<XCircle size={20} />}
-                label="Issues opened"
-                value={metrics.summary.issuesOpened}
-                detail={`${formatNumber(metrics.summary.issuesOpen)} open, ${formatNumber(
-                  metrics.summary.issuesClosed
-                )} closed`}
-              />
-              <MetricCard
-                icon={<MessageSquare size={20} />}
-                label="Comments and reviews"
-                value={metrics.summary.issueComments + metrics.summary.prReviewComments + metrics.summary.reviews}
-                detail={`${formatNumber(metrics.summary.reviews)} reviews, ${formatNumber(
-                  metrics.summary.issueComments + metrics.summary.prReviewComments
-                )} comments`}
-              />
-            </section>
-
-            <section className="split-layout">
-              <div className="panel">
-                <div className="panel-header">
-                  <h2>Repositories</h2>
-                  <label className="search-box">
-                    <Search size={16} />
-                    <input
-                      value={query}
-                      onChange={(event) => setQuery(event.target.value)}
-                      placeholder="Filter repositories"
-                    />
-                  </label>
-                </div>
-                <div className="repo-list">
-                  {filteredRepositories.map((repo) => (
-                    <a
-                      key={repo.nameWithOwner}
-                      className="repo-row"
-                      href={repo.url}
-                      onClick={(event) => openExternal(event, repo.url)}
-                    >
-                      <strong>{repo.nameWithOwner}</strong>
-                      <span>{repo.defaultBranch}</span>
-                      <b>{formatNumber(repo.defaultBranchCommits)}</b>
-                      <small>commits</small>
-                      <b>{formatNumber(repo.pullRequests)}</b>
-                      <small>PRs</small>
-                      <b>{formatNumber(repo.issues + repo.reviews)}</b>
-                      <small>issues/reviews</small>
-                    </a>
-                  ))}
-                </div>
-              </div>
-
-              <div className="panel">
-                <div className="panel-header">
-                  <h2>Pull Requests</h2>
-                  <span>{formatNumber(metrics.pullRequests.length)}</span>
-                </div>
-                <div className="activity-list">
-                  {metrics.pullRequests.slice(0, 12).map((pr) => (
-                    <a
-                      key={pr.url}
-                      className="activity-row"
-                      href={pr.url}
-                      onClick={(event) => openExternal(event, pr.url)}
-                    >
-                      <span className={`state-pill ${pr.state.toLowerCase()}`}>{pr.state.toLowerCase()}</span>
-                      <strong>{pr.title}</strong>
-                      <small>
-                        {pr.repository} · {formatNumber(pr.commits)} commits · {formatNumber(pr.reviews)} reviews
-                      </small>
-                    </a>
-                  ))}
-                </div>
-              </div>
-            </section>
-
-            <section className="split-layout">
-              <div className="panel">
-                <div className="panel-header">
-                  <h2>Issues</h2>
-                  <span>{formatNumber(metrics.issues.length)}</span>
-                </div>
-                <div className="activity-list">
-                  {metrics.issues.slice(0, 10).map((issue) => (
-                    <a
-                      key={issue.url}
-                      className="activity-row"
-                      href={issue.url}
-                      onClick={(event) => openExternal(event, issue.url)}
-                    >
-                      <span className={`state-pill ${issue.state.toLowerCase()}`}>{issue.state.toLowerCase()}</span>
-                      <strong>{issue.title}</strong>
-                      <small>
-                        {issue.repository} · {formatNumber(issue.comments)} comments
-                      </small>
-                    </a>
-                  ))}
-                </div>
-              </div>
-
-              <div className="panel">
-                <div className="panel-header">
-                  <h2>Recent Comments</h2>
-                  <span>{formatNumber(metrics.comments.length)}</span>
-                </div>
-                <div className="activity-list">
-                  {metrics.comments.slice(0, 10).map((comment) => (
-                    <a
-                      key={comment.url}
-                      className="activity-row"
-                      href={comment.url}
-                      onClick={(event) => openExternal(event, comment.url)}
-                    >
-                      <span className="state-pill neutral">{comment.type === "issue" ? "issue" : "review"}</span>
-                      <strong>{comment.bodyText || "Comment"}</strong>
-                      <small>
-                        {comment.repository} · {formatDate(comment.createdAt)}
-                      </small>
-                    </a>
-                  ))}
-                </div>
-              </div>
-            </section>
-          </>
-        ) : null}
-      </section>
+      {error ? <div className="alert">{error}</div> : null}
     </main>
   );
 }
 
-function MetricCard({
-  icon,
-  label,
+function StatCell({
   value,
-  detail
+  label,
+  prefix = "",
+  tint
 }: {
-  icon: React.ReactNode;
-  label: string;
   value: number;
-  detail: string;
+  label: string;
+  prefix?: string;
+  tint: string;
 }) {
   return (
-    <article className="metric-card">
-      <div>{icon}</div>
+    <article className={`stat-cell tint-${tint}`}>
+      <strong>
+        {prefix}
+        {formatNumber(value)}
+      </strong>
       <span>{label}</span>
-      <strong>{formatNumber(value)}</strong>
-      <small>{detail}</small>
     </article>
   );
 }

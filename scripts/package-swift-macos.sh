@@ -15,6 +15,27 @@ SIGN_IDENTITY="${DEVELOPER_ID_APPLICATION:-}"
 cd "$SWIFT_APP_DIR"
 swift build -c release
 
+is_native_app_running() {
+  pgrep -f "/$PRODUCT_NAME($| )" >/dev/null
+}
+
+if is_native_app_running; then
+  echo "$APP_NAME is running. Asking it to quit before replacing the app bundle..."
+  osascript -e "tell application \"$APP_NAME\" to quit" >/dev/null 2>&1 || true
+
+  for _ in {1..50}; do
+    if ! is_native_app_running; then
+      break
+    fi
+    sleep 0.1
+  done
+
+  if is_native_app_running; then
+    echo "$APP_NAME is still running. Quit it before packaging."
+    exit 1
+  fi
+fi
+
 rm -rf "$APP_BUNDLE"
 mkdir -p "$APP_BUNDLE/Contents/MacOS"
 mkdir -p "$APP_BUNDLE/Contents/Resources/SharedContract"
@@ -24,6 +45,9 @@ cp "$ROOT_DIR/assets/icon.icns" "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
 cp -R "$ROOT_DIR/packages/github-contract/queries" "$APP_BUNDLE/Contents/Resources/SharedContract/queries"
 cp -R "$ROOT_DIR/packages/github-contract/schema" "$APP_BUNDLE/Contents/Resources/SharedContract/schema"
 cp -R "$ROOT_DIR/packages/github-contract/fixtures" "$APP_BUNDLE/Contents/Resources/SharedContract/fixtures"
+mkdir -p "$APP_BUNDLE/Contents/Resources/OpenClaw"
+cp "$ROOT_DIR/assets/openclaw/pixel-lobster.svg" "$APP_BUNDLE/Contents/Resources/OpenClaw/pixel-lobster.svg"
+cp "$ROOT_DIR/assets/openclaw/pixel-lobster.png" "$APP_BUNDLE/Contents/Resources/OpenClaw/pixel-lobster.png"
 
 cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

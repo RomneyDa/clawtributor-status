@@ -15,7 +15,7 @@ final class AppModel: ObservableObject {
     @Published var token: String?
     @Published var metrics: GitHubMetrics?
     @Published var deviceCode: DeviceCodeResponse?
-    @Published var selectedDays = 90
+    @Published var selectedDays = 1
     @Published var isLoading = false
     @Published var loadingMessage = "Idle"
     @Published var errorMessage: String?
@@ -23,35 +23,58 @@ final class AppModel: ObservableObject {
     private let keychain = KeychainStore()
     private let authService = GitHubAuthService()
     private let metricsService = GitHubMetricsService()
+    private var authTask: Task<Void, Never>?
+    private var metricsTask: Task<Void, Never>?
+    private var metricsCache: [Int: GitHubMetrics] = [:]
 
     init() {
         token = keychain.readToken()
     }
 
     func signIn() {
-        Task {
+        authTask?.cancel()
+        authTask = Task {
             await authenticate()
         }
     }
 
     func refresh() {
         guard let token else { return }
-        Task {
+        metricsTask?.cancel()
+        metricsTask = Task {
             await loadMetrics(token: token)
         }
     }
 
     func selectRange(days: Int) {
         selectedDays = days
+        if let cached = metricsCache[days] {
+            metrics = cached
+        }
         refresh()
     }
 
     func signOut() {
+        cancelRequests()
         keychain.deleteToken()
         token = nil
         metrics = nil
         deviceCode = nil
         errorMessage = nil
+        isLoading = false
+        loadingMessage = "Idle"
+        metricsCache.removeAll()
+    }
+
+    func shutdown() {
+        cancelRequests()
+    }
+
+    private func cancelRequests() {
+        authTask?.cancel()
+        metricsTask?.cancel()
+        authTask = nil
+        metricsTask = nil
     }
 
     private func authenticate() async {
@@ -64,7 +87,7 @@ final class AppModel: ObservableObject {
             let code = try await authService.requestDeviceCode()
             deviceCode = code
             loadingMessage = "Waiting for GitHub authorization"
-            authService.openVerificationPage(code.verificationUri)
+            authService.openVerificationPage(code.verificationUri, userCode: code.userCode)
 
             var delay = code.interval
             let expiresAt = Date().addingTimeInterval(TimeInterval(code.expiresIn))
@@ -89,19 +112,26 @@ final class AppModel: ObservableObject {
             }
             throw AppError.message("GitHub login expired. Start login again.")
         } catch {
+            if error is CancellationError || Task.isCancelled { return }
             errorMessage = error.localizedDescription
         }
     }
 
     private func loadMetrics(token: String) async {
+        let days = selectedDays
         isLoading = true
         loadingMessage = "Fetching GitHub activity"
         errorMessage = nil
         defer { isLoading = false }
 
         do {
-            metrics = try await metricsService.fetchMetrics(token: token, days: selectedDays)
+            let fresh = try await metricsService.fetchMetrics(token: token, days: days)
+            if days == selectedDays {
+                metrics = fresh
+            }
+            metricsCache[days] = fresh
         } catch {
+            if error is CancellationError || Task.isCancelled { return }
             errorMessage = error.localizedDescription
         }
     }

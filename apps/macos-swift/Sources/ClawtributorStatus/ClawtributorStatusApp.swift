@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 @main
@@ -8,10 +9,12 @@ struct ClawtributorStatusApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(model)
-                .frame(width: 420, height: 560)
-                .frame(minWidth: 360, minHeight: 440)
+                .frame(width: 360)
+                .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
+                    model.shutdown()
+                }
         }
-        .windowResizability(.contentMinSize)
+        .windowResizability(.contentSize)
         .commands {
             CommandGroup(after: .appInfo) {
                 Button("Delete Local GitHub Token") {
