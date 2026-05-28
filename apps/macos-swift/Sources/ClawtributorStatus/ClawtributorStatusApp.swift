@@ -8,8 +8,10 @@ struct ClawtributorStatusApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(model)
-                .frame(minWidth: 980, minHeight: 680)
+                .frame(width: 420, height: 560)
+                .frame(minWidth: 360, minHeight: 440)
         }
+        .windowResizability(.contentMinSize)
         .commands {
             CommandGroup(after: .appInfo) {
                 Button("Delete Local GitHub Token") {

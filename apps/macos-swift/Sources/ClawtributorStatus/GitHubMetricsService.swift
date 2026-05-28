@@ -27,7 +27,7 @@ final class GitHubMetricsService {
             variables: [
                 "pullRequestQuery": "is:pr org:\(AppConfig.targetOrganization) author:\(login) \(dateQualifier)",
                 "issueQuery": "is:issue org:\(AppConfig.targetOrganization) author:\(login) \(dateQualifier)",
-                "issueCommentQuery": "org:\(AppConfig.targetOrganization) commenter:\(login) \(dateQualifier)"
+                "issueCommentQuery": "is:issue org:\(AppConfig.targetOrganization) commenter:\(login) \(dateQualifier)"
             ]
         )
 
@@ -171,7 +171,12 @@ final class GitHubMetricsService {
             throw AppError.message("GitHub GraphQL returned an unexpected response.")
         }
 
-        let envelope = try decoder.decode(GraphQLEnvelope<T>.self, from: data)
+        let envelope: GraphQLEnvelope<T>
+        do {
+            envelope = try decoder.decode(GraphQLEnvelope<T>.self, from: data)
+        } catch let error as DecodingError {
+            throw AppError.message("GitHub returned activity data this app could not read: \(describe(error))")
+        }
         if let errors = envelope.errors, !errors.isEmpty {
             throw AppError.message(errors.map(\.message).joined(separator: "; "))
         }
@@ -215,4 +220,24 @@ private func dateOnly(_ date: Date) -> String {
 private func isInRange(_ isoDate: String, from: Date, to: Date) -> Bool {
     guard let date = ISO8601DateFormatter().date(from: isoDate) else { return false }
     return date >= from && date <= to
+}
+
+private func describe(_ error: DecodingError) -> String {
+    switch error {
+    case .keyNotFound(let key, let context):
+        return "missing \(key.stringValue) at \(codingPath(context))"
+    case .typeMismatch(_, let context):
+        return "unexpected type at \(codingPath(context))"
+    case .valueNotFound(_, let context):
+        return "missing value at \(codingPath(context))"
+    case .dataCorrupted(let context):
+        return context.debugDescription
+    @unknown default:
+        return "unexpected response shape"
+    }
+}
+
+private func codingPath(_ context: DecodingError.Context) -> String {
+    let path = context.codingPath.map(\.stringValue).joined(separator: ".")
+    return path.isEmpty ? "response root" : path
 }

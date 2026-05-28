@@ -17,6 +17,7 @@ final class AppModel: ObservableObject {
     @Published var deviceCode: DeviceCodeResponse?
     @Published var selectedDays = 90
     @Published var isLoading = false
+    @Published var loadingMessage = "Idle"
     @Published var errorMessage: String?
 
     private let keychain = KeychainStore()
@@ -55,12 +56,14 @@ final class AppModel: ObservableObject {
 
     private func authenticate() async {
         isLoading = true
+        loadingMessage = "Requesting GitHub login"
         errorMessage = nil
         defer { isLoading = false }
 
         do {
             let code = try await authService.requestDeviceCode()
             deviceCode = code
+            loadingMessage = "Waiting for GitHub authorization"
             authService.openVerificationPage(code.verificationUri)
 
             var delay = code.interval
@@ -92,6 +95,7 @@ final class AppModel: ObservableObject {
 
     private func loadMetrics(token: String) async {
         isLoading = true
+        loadingMessage = "Fetching GitHub activity"
         errorMessage = nil
         defer { isLoading = false }
 

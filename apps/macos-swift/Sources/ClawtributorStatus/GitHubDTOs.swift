@@ -88,6 +88,13 @@ struct SearchNode: Decodable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        if container.allKeys.isEmpty {
+            asPullRequest = nil
+            asIssue = nil
+            asIssueCommentSource = nil
+            return
+        }
+
         if let additions = try? container.decode(Int.self, forKey: .additions),
            let reviews = try? container.decode(Count.self, forKey: .reviews),
            let commits = try? container.decode(Count.self, forKey: .commits) {
@@ -129,10 +136,14 @@ struct SearchNode: Decodable {
 
         asPullRequest = nil
         asIssue = nil
-        asIssueCommentSource = IssueCommentSourceNode(
-            repository: try container.decode(RepositoryName.self, forKey: .repository),
-            comments: try container.decodeIfPresent(CommentConnection.self, forKey: .comments) ?? CommentConnection(nodes: [])
-        )
+        if let repository = try? container.decode(RepositoryName.self, forKey: .repository) {
+            asIssueCommentSource = IssueCommentSourceNode(
+                repository: repository,
+                comments: try container.decodeIfPresent(CommentConnection.self, forKey: .comments) ?? CommentConnection(nodes: [])
+            )
+        } else {
+            asIssueCommentSource = nil
+        }
     }
 
     enum CodingKeys: String, CodingKey {

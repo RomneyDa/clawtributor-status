@@ -266,7 +266,7 @@ export async function fetchGitHubMetrics(token: string, days: number): Promise<G
   const searchData = await graphql<SearchQueryData>(token, activitySearchQuery, {
     pullRequestQuery: `is:pr org:${targetOrganization} author:${login} ${dateQualifier}`,
     issueQuery: `is:issue org:${targetOrganization} author:${login} ${dateQualifier}`,
-    issueCommentQuery: `org:${targetOrganization} commenter:${login} ${dateQualifier}`
+    issueCommentQuery: `is:issue org:${targetOrganization} commenter:${login} ${dateQualifier}`
   });
 
   const collection = contributionData.viewer.contributionsCollection;

@@ -7,10 +7,10 @@ const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
 
 function createWindow() {
   const window = new BrowserWindow({
-    width: 1180,
-    height: 820,
-    minWidth: 960,
-    minHeight: 680,
+    width: 430,
+    height: 600,
+    minWidth: 360,
+    minHeight: 440,
     title: "Clawtributor Status",
     backgroundColor: "#f7f5f0",
     webPreferences: {
